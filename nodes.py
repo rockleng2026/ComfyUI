@@ -56,13 +56,21 @@ def interrupt_processing(value=True):
 
 MAX_RESOLUTION=16384
 
+def get_available_devices():
+    devices = ["cpu"]
+    if torch.cuda.is_available():
+        for i in range(torch.cuda.device_count()):
+            devices.append(f"cuda:{i}")
+    return devices
+
 class CLIPTextEncode(ComfyNodeABC):
     @classmethod
     def INPUT_TYPES(s) -> InputTypeDict:
         return {
             "required": {
                 "text": (IO.STRING, {"multiline": True, "dynamicPrompts": True, "tooltip": "The text to be encoded."}),
-                "clip": (IO.CLIP, {"tooltip": "The CLIP model used for encoding the text."})
+                "clip": (IO.CLIP, {"tooltip": "The CLIP model used for encoding the text."}),
+                "device": (get_available_devices(), {"default": "cuda:0", "tooltip": "The device to run the CLIP text encoder on."})
             }
         }
     RETURN_TYPES = (IO.CONDITIONING,)
@@ -73,11 +81,26 @@ class CLIPTextEncode(ComfyNodeABC):
     DESCRIPTION = "Encodes a text prompt using a CLIP model into an embedding that can be used to guide the diffusion model towards generating specific images."
     SEARCH_ALIASES = ["text", "prompt", "text prompt", "positive prompt", "negative prompt", "encode text", "text encoder", "encode prompt"]
 
-    def encode(self, clip, text):
+    def encode(self, clip, text, device="cuda:0"):
         if clip is None:
             raise RuntimeError("ERROR: clip input is invalid: None\n\nIf the clip is from a checkpoint loader node your checkpoint does not contain a valid clip or text encoder model.")
-        tokens = clip.tokenize(text)
-        return (clip.encode_from_tokens_scheduled(tokens), )
+        
+        target_device = torch.device(device)
+        original_load_device = clip.patcher.load_device
+        
+        if original_load_device != target_device:
+            clip.patcher.load_device = target_device
+            clip.cond_stage_model.to(target_device)
+        
+        try:
+            tokens = clip.tokenize(text)
+            result = (clip.encode_from_tokens_scheduled(tokens), )
+        finally:
+            if original_load_device != target_device:
+                clip.patcher.load_device = original_load_device
+                clip.cond_stage_model.to(original_load_device)
+        
+        return result
 
 
 class ConditioningCombine:
@@ -296,7 +319,8 @@ class VAEDecode:
         return {
             "required": {
                 "samples": ("LATENT", {"tooltip": "The latent to be decoded."}),
-                "vae": ("VAE", {"tooltip": "The VAE model used for decoding the latent."})
+                "vae": ("VAE", {"tooltip": "The VAE model used for decoding the latent."}),
+                "device": (get_available_devices(), {"default": "cuda:0", "tooltip": "The device to run the VAE decoder on."})
             }
         }
     RETURN_TYPES = ("IMAGE",)
@@ -307,14 +331,31 @@ class VAEDecode:
     DESCRIPTION = "Decodes latent images back into pixel space images."
     SEARCH_ALIASES = ["decode", "decode latent", "latent to image", "render latent"]
 
-    def decode(self, vae, samples):
-        latent = samples["samples"]
-        if latent.is_nested:
-            latent = latent.unbind()[0]
+    def decode(self, vae, samples, device="cuda:0"):
+        target_device = torch.device(device)
+        original_vae_device = vae.device
+        original_patcher_load_device = vae.patcher.load_device
+        
+        if original_vae_device != target_device:
+            vae.device = target_device
+            vae.patcher.load_device = target_device
+        
+        try:
+            latent = samples["samples"]
+            if latent.is_nested:
+                latent = latent.unbind()[0]
+            
+            if latent.device != target_device:
+                latent = latent.to(target_device)
 
-        images = vae.decode(latent)
-        if len(images.shape) == 5: #Combine batches
-            images = images.reshape(-1, images.shape[-3], images.shape[-2], images.shape[-1])
+            images = vae.decode(latent)
+            if len(images.shape) == 5: #Combine batches
+                images = images.reshape(-1, images.shape[-3], images.shape[-2], images.shape[-1])
+        finally:
+            if original_vae_device != target_device:
+                vae.device = original_vae_device
+                vae.patcher.load_device = original_patcher_load_device
+        
         return (images, )
 
 class VAEDecodeTiled:
@@ -1539,8 +1580,19 @@ class SetLatentNoiseMask:
         s["noise_mask"] = mask.reshape((-1, 1, mask.shape[-2], mask.shape[-1]))
         return (s,)
 
-def common_ksampler(model, seed, steps, cfg, sampler_name, scheduler, positive, negative, latent, denoise=1.0, disable_noise=False, start_step=None, last_step=None, force_full_denoise=False):
+def common_ksampler(model, seed, steps, cfg, sampler_name, scheduler, positive, negative, latent, denoise=1.0, disable_noise=False, start_step=None, last_step=None, force_full_denoise=False, device="cuda:0"):
+    target_device = torch.device(device)
+    original_load_device = model.load_device
+    original_model_device = model.model.device
+    
+    if original_load_device != target_device:
+        model.load_device = target_device
+        model.model.device = target_device
+    
     latent_image = latent["samples"]
+    if latent_image.device != target_device:
+        latent_image = latent_image.to(target_device)
+    
     latent_image = comfy.sample.fix_empty_latent_channels(model, latent_image, latent.get("downscale_ratio_spacial", None))
 
     if disable_noise:
@@ -1548,10 +1600,14 @@ def common_ksampler(model, seed, steps, cfg, sampler_name, scheduler, positive, 
     else:
         batch_inds = latent["batch_index"] if "batch_index" in latent else None
         noise = comfy.sample.prepare_noise(latent_image, seed, batch_inds)
+        if noise.device != target_device:
+            noise = noise.to(target_device)
 
     noise_mask = None
     if "noise_mask" in latent:
         noise_mask = latent["noise_mask"]
+        if noise_mask.device != target_device:
+            noise_mask = noise_mask.to(target_device)
 
     callback = latent_preview.prepare_callback(model, steps)
     disable_pbar = not comfy.utils.PROGRESS_BAR_ENABLED
@@ -1561,6 +1617,11 @@ def common_ksampler(model, seed, steps, cfg, sampler_name, scheduler, positive, 
     out = latent.copy()
     out.pop("downscale_ratio_spacial", None)
     out["samples"] = samples
+    
+    if original_load_device != target_device:
+        model.load_device = original_load_device
+        model.model.device = original_model_device
+    
     return (out, )
 
 class KSampler:
@@ -1578,6 +1639,7 @@ class KSampler:
                 "negative": ("CONDITIONING", {"tooltip": "The conditioning describing the attributes you want to exclude from the image."}),
                 "latent_image": ("LATENT", {"tooltip": "The latent image to denoise."}),
                 "denoise": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "The amount of denoising applied, lower values will maintain the structure of the initial image allowing for image to image sampling."}),
+                "device": (get_available_devices(), {"default": "cuda:0", "tooltip": "The device to run the sampling on."}),
             }
         }
 
@@ -1589,8 +1651,8 @@ class KSampler:
     DESCRIPTION = "Uses the provided model, positive and negative conditioning to denoise the latent image."
     SEARCH_ALIASES = ["sampler", "sample", "generate", "denoise", "diffuse", "txt2img", "img2img"]
 
-    def sample(self, model, seed, steps, cfg, sampler_name, scheduler, positive, negative, latent_image, denoise=1.0):
-        return common_ksampler(model, seed, steps, cfg, sampler_name, scheduler, positive, negative, latent_image, denoise=denoise)
+    def sample(self, model, seed, steps, cfg, sampler_name, scheduler, positive, negative, latent_image, denoise=1.0, device="cuda:0"):
+        return common_ksampler(model, seed, steps, cfg, sampler_name, scheduler, positive, negative, latent_image, denoise=denoise, device=device)
 
 class KSamplerAdvanced:
     @classmethod
