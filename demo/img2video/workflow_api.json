@@ -1,0 +1,78 @@
+{
+  "1": {
+    "inputs": {
+      "image": "movapic.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "加载图像"
+    }
+  },
+  "2": {
+    "inputs": {
+      "model_name": "MOVA-360p",
+      "offload_mode": "group",
+      "dtype": "bfloat16",
+      "device": "cuda:3",
+      "additional_devices": ""
+    },
+    "class_type": "RunningHub_MOVA_Loader",
+    "_meta": {
+      "title": "RunningHub MOVA Loader"
+    }
+  },
+  "3": {
+    "inputs": {
+      "prompt": [
+        "10",
+        0
+      ],
+      "width": 640,
+      "height": 352,
+      "num_frames": 97,
+      "fps": 24,
+      "steps": 25,
+      "cfg_scale": 5,
+      "seed": 1006213863,
+      "negative_prompt": "",
+      "sigma_shift": 5,
+      "remove_video_dit": false,
+      "pipeline": [
+        "2",
+        0
+      ],
+      "reference_image": [
+        "1",
+        0
+      ]
+    },
+    "class_type": "RunningHub_MOVA_Sampler",
+    "_meta": {
+      "title": "RunningHub MOVA Sampler"
+    }
+  },
+  "4": {
+    "inputs": {
+      "filename_prefix": "video/ComfyUI",
+      "format": "auto",
+      "codec": "auto",
+      "video": [
+        "3",
+        0
+      ]
+    },
+    "class_type": "SaveVideo",
+    "_meta": {
+      "title": "保存视频"
+    }
+  },
+  "10": {
+    "inputs": {
+      "value": "一个女生对着镜头撒娇。她说：“遇到难回答的问题，就不说话了。”"
+    },
+    "class_type": "PrimitiveStringMultiline",
+    "_meta": {
+      "title": "字符串（多行）"
+    }
+  }
+}
