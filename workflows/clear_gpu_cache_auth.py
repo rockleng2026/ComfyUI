@@ -1,0 +1,147 @@
+#!/usr/bin/env python3
+"""
+ComfyUI GPU 显存清空工具（支持认证）
+通过执行空工作流强制卸载所有模型，释放显存
+
+使用方法:
+    python clear_gpu_cache_auth.py
+
+认证配置:
+    修改 AUTH_TOKEN 变量为您的 ComfyUI API token
+"""
+
+import requests
+import json
+import time
+
+# ============ 配置 ============
+SERVER = "127.0.0.1:8188"
+BASE_URL = f"http://{SERVER}"
+
+# 认证 Token (从 ComfyUI Manager 获取)
+AUTH_TOKEN = "$2b$12$U/9EZAVuXlTtDNTWzq2SnuKcryCzlvOOwEIoF1QiVpLMzr9DMkxtu"
+
+# HTTP Headers
+HEADERS = {"Content-Type": "application/json", "Authorization": f"Bearer {AUTH_TOKEN}"}
+
+# 空工作流 (没有任何节点)
+EMPTY_WORKFLOW = {
+    "last_node_id": 0,
+    "last_link_id": 0,
+    "nodes": [],
+    "links": [],
+    "groups": [],
+    "config": {},
+    "extra": {},
+    "version": 0.4,
+}
+
+
+def clear_gpu_cache():
+    """执行空工作流清空显存"""
+    print("=" * 60)
+    print("ComfyUI GPU 显存清空工具")
+    print("=" * 60)
+
+    # 1. 检查连接
+    print("\n1. 检查 ComfyUI 服务...")
+    try:
+        response = requests.get(f"{BASE_URL}/system_stats", headers=HEADERS, timeout=5)
+        if response.status_code == 200:
+            stats = response.json()
+            print("✓ 服务正常")
+            print(f"\n  当前显存状态:")
+            for device in stats.get("devices", []):
+                vram_free = device.get("vram_free", 0) / 1024**3
+                vram_total = device.get("vram_total", 0) / 1024**3
+                print(
+                    f"    GPU {device.get('index', 0)}: {vram_free:.1f}GB / {vram_total:.1f}GB"
+                )
+        else:
+            print(f"✗ 连接失败: {response.status_code}")
+            if response.status_code == 401:
+                print("  错误：认证失败，请检查 AUTH_TOKEN 是否正确")
+            return False
+    except Exception as e:
+        print(f"✗ 无法连接: {e}")
+        print("  请确保 ComfyUI 已启动")
+        return False
+
+    # 2. 提交空工作流
+    print("\n2. 提交空工作流...")
+    try:
+        response = requests.post(
+            f"{BASE_URL}/prompt", headers=HEADERS, json={"prompt": EMPTY_WORKFLOW}
+        )
+
+        if response.status_code == 401:
+            print(f"✗ 认证失败：请检查 AUTH_TOKEN")
+            print(f"  当前使用的 token: {AUTH_TOKEN[:20]}...")
+            return False
+
+        if response.status_code != 200:
+            print(f"✗ 提交失败: {response.status_code}")
+            print(response.text[:200])
+            return False
+
+        result = response.json()
+        prompt_id = result.get("prompt_id")
+
+        if not prompt_id:
+            print(f"✗ 未返回 prompt_id: {result}")
+            return False
+
+        print(f"✓ 已提交: {prompt_id}")
+
+    except Exception as e:
+        print(f"✗ 提交出错: {e}")
+        return False
+
+    # 3. 等待执行完成
+    print("\n3. 等待执行完成...")
+    for i in range(30):
+        time.sleep(0.5)
+        try:
+            response = requests.get(
+                f"{BASE_URL}/history/{prompt_id}", headers=HEADERS, timeout=5
+            )
+            history = response.json()
+
+            if prompt_id in history:
+                print(f"✓ 执行完成")
+                break
+        except:
+            pass
+        if i % 10 == 0 and i > 0:
+            print(f"  等待中... {i * 0.5}s", end="\r")
+    else:
+        print(f"\n⚠️  超时，但可能已经清空")
+
+    # 4. 检查显存状态
+    print("\n4. 检查显存状态...")
+    try:
+        response = requests.get(f"{BASE_URL}/system_stats", headers=HEADERS, timeout=5)
+        stats = response.json()
+
+        print(f"\n  显存状态:")
+        for device in stats.get("devices", []):
+            vram_free = device.get("vram_free", 0) / 1024**3
+            vram_total = device.get("vram_total", 0) / 1024**3
+            used = vram_total - vram_free
+            print(
+                f"    GPU {device.get('index', 0)}: {used:.1f}GB / {vram_total:.1f}GB (可用: {vram_free:.1f}GB)"
+            )
+
+        print("\n" + "=" * 60)
+        print("✓ GPU 显存清理完成!")
+        print("=" * 60)
+        return True
+
+    except Exception as e:
+        print(f"  ✗ 检查失败: {e}")
+        return False
+
+
+if __name__ == "__main__":
+    success = clear_gpu_cache()
+    exit(0 if success else 1)
