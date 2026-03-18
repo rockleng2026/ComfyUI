@@ -23,11 +23,15 @@ import json
 import time
 import os
 
-# ComfyUI 服务器地址
-SERVER = "117.72.61.156:40800"
+# 禁用代理
+os.environ['HTTP_PROXY'] = ''
+os.environ['HTTPS_PROXY'] = ''
+os.environ['NO_PROXY'] = '*'
+
+SERVER = "127.0.0.1:40800"
 BASE_URL = f"http://{SERVER}"
 # 替换为你的 Token
-API_TOKEN = "你保存的 token 字符串"
+API_TOKEN = ""
 
 # 认证请求头
 HEADERS = {
@@ -38,6 +42,9 @@ HEADERS = {
 WORKFLOW_FILE = "workflow_api.json"
 IMAGE_FILE = "input_image.jpg"
 OUTPUT_DIR = "outputs"
+
+# 获取脚本所在目录
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
 def check_server():
@@ -76,13 +83,14 @@ def check_server():
 
 def upload_image():
     """上传参考图片（带认证）"""
-    print(f"\n上传参考图片：{IMAGE_FILE}")
+    image_path = os.path.join(SCRIPT_DIR, IMAGE_FILE)
+    print(f"\n上传参考图片：{image_path}")
     
-    if not os.path.exists(IMAGE_FILE):
-        print(f"✗ 图片不存在：{IMAGE_FILE}")
+    if not os.path.exists(image_path):
+        print(f"✗ 图片不存在：{image_path}")
         return None
     
-    with open(IMAGE_FILE, "rb") as f:
+    with open(image_path, "rb") as f:
         files = {"image": f}
         data = {
             "type": "input",
@@ -111,8 +119,9 @@ def upload_image():
 
 def load_workflow(image_name):
     """加载并配置工作流"""
-    print(f"\n加载工作流：{WORKFLOW_FILE}")
-    with open(WORKFLOW_FILE, "r") as f:
+    workflow_path = os.path.join(SCRIPT_DIR, WORKFLOW_FILE)
+    print(f"\n加载工作流：{workflow_path}")
+    with open(workflow_path, "r", encoding="utf-8") as f:
         workflow = json.load(f)
     
     workflow["1"]["inputs"]["image"] = image_name
@@ -199,6 +208,9 @@ def wait_for_completion(prompt_id, timeout=1200):
 def download_video(prompt_id, save_dir=OUTPUT_DIR):
     """下载生成的视频（带认证）"""
     print(f"\n获取生成结果...")
+    
+    # 使用绝对路径保存
+    save_dir = os.path.join(SCRIPT_DIR, save_dir)
     
     response = requests.get(
         f"{BASE_URL}/history/{prompt_id}",

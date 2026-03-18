@@ -8,22 +8,25 @@ ComfyUI API 文生图测试脚本（带 Token 认证）
     
 要求:
     - ComfyUI 服务已启动并开启 Token 认证
-    - 已安装依赖：pip install requests Pillow
+    - 已安装依赖：pip install requests
     - 已下载模型：models/checkpoints/v1-5-pruned.ckpt
 """
 
 import requests
 import json
 import time
-from PIL import Image
-from io import BytesIO
 import os
 
+# 禁用代理
+os.environ['HTTP_PROXY'] = ''
+os.environ['HTTPS_PROXY'] = ''
+os.environ['NO_PROXY'] = '*'
+
 # ComfyUI 服务器地址
-SERVER = "127.0.0.1:8188"
+SERVER = "127.0.0.1:40800"
 BASE_URL = f"http://{SERVER}"
 # 替换为你的 Token
-API_TOKEN = "你保存的 token 字符串"
+API_TOKEN = ""
 
 # 认证请求头
 HEADERS = {
@@ -33,6 +36,9 @@ HEADERS = {
 
 WORKFLOW_FILE = "workflow_api.json"
 OUTPUT_DIR = "outputs"
+
+# 获取脚本所在目录
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
 def check_server():
@@ -72,8 +78,9 @@ def check_server():
 
 def load_workflow():
     """加载工作流 JSON"""
-    print(f"\n加载工作流：{WORKFLOW_FILE}")
-    with open(WORKFLOW_FILE, "r") as f:
+    workflow_path = os.path.join(SCRIPT_DIR, WORKFLOW_FILE)
+    print(f"\n加载工作流：{workflow_path}")
+    with open(workflow_path, "r", encoding="utf-8") as f:
         workflow = json.load(f)
     
     print("✓ 工作流配置:")
@@ -150,6 +157,9 @@ def download_image(prompt_id, save_dir=OUTPUT_DIR):
     """下载生成的图片（带认证）"""
     print(f"\n获取生成结果...")
     
+    # 使用绝对路径保存
+    save_dir = os.path.join(SCRIPT_DIR, save_dir)
+    
     response = requests.get(
         f"{BASE_URL}/history/{prompt_id}",
         headers=HEADERS,
@@ -171,11 +181,19 @@ def download_image(prompt_id, save_dir=OUTPUT_DIR):
         return None
     
     outputs = data['outputs']
-    if '9' not in outputs:
+    # 查找包含 images 的输出节点（可能是 SaveImage 节点 10 或其他）
+    output_node = None
+    for node_id in ['10', '9', '8']:  # 按优先级查找
+        if node_id in outputs and 'images' in outputs[node_id]:
+            output_node = node_id
+            break
+    
+    if not output_node:
         print(f"✗ 未找到输出节点")
+        print(f"  可用输出：{list(outputs.keys())}")
         return None
     
-    images = outputs['9']['images']
+    images = outputs[output_node]['images']
     if not images:
         print(f"✗ 未找到生成的图片")
         return None
@@ -199,12 +217,11 @@ def download_image(prompt_id, save_dir=OUTPUT_DIR):
             timeout=30
         )
         
-        image = Image.open(BytesIO(response.content))
-        
         output_path = os.path.join(save_dir, img_info['filename'])
-        image.save(output_path)
+        with open(output_path, 'wb') as f:
+            f.write(response.content)
         print(f"    ✓ 已保存：{output_path}")
-        print(f"    尺寸：{image.size}")
+        print(f"    大小：{len(response.content) / 1024:.1f} KB")
         downloaded.append(output_path)
     
     return downloaded
