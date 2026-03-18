@@ -522,6 +522,7 @@ class VAEDecode:
         target_device = torch.device(device)
         original_vae_device = vae.device
         original_patcher_load_device = vae.patcher.load_device
+        original_first_stage_device = getattr(vae, "first_stage_model", None)
 
         # Set CUDA device context
         device_id = target_device.index if target_device.type == "cuda" else 0
@@ -532,6 +533,9 @@ class VAEDecode:
         if original_vae_device != target_device:
             vae.device = target_device
             vae.patcher.load_device = target_device
+            # Move first_stage_model to target device if it exists
+            if hasattr(vae, "first_stage_model") and vae.first_stage_model is not None:
+                vae.first_stage_model.to(target_device)
 
         try:
             latent = samples["samples"]
@@ -550,6 +554,12 @@ class VAEDecode:
             if original_vae_device != target_device:
                 vae.device = original_vae_device
                 vae.patcher.load_device = original_patcher_load_device
+                # Restore first_stage_model device
+                if original_first_stage_device is not None:
+                    try:
+                        vae.first_stage_model.to(original_first_stage_device)
+                    except:
+                        pass
             # Restore CUDA device context
             if device_id != original_cuda_device:
                 torch.cuda.set_device(original_cuda_device)
