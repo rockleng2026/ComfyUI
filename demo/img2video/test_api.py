@@ -24,7 +24,7 @@ import time
 import os
 
 # ComfyUI 服务器地址
-SERVER = "127.0.0.1:8188"
+SERVER = "127.0.0.1:40800"
 BASE_URL = f"http://{SERVER}"
 WORKFLOW_FILE = "workflow_api.json"
 IMAGE_FILE = "input_image.jpg"
