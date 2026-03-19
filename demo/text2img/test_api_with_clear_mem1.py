@@ -23,7 +23,7 @@ os.environ['HTTPS_PROXY'] = ''
 os.environ['NO_PROXY'] = '*'
 
 # ComfyUI 服务器地址
-SERVER = "comfyui.iot38.top:40800"
+SERVER = "comfyui1.iot38.top:40800"
 BASE_URL = f"http://{SERVER}"
 # 替换为你的 Token
 API_TOKEN = "$2b$12$U/9EZAVuXlTtDNTWzq2SnuKcryCzlvOOwEIoF1QiVpLMzr9DMkxtu"

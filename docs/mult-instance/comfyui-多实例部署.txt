@@ -1,0 +1,420 @@
+comfyui-多实例部署
+运行多个 ComfyUI 实例通常出于几种不同的目的，比如隔离不同项目的插件环境、充分利用多张显卡，或是提高服务的并发处理能力。下面针对不同的需求，整理了三种主流的多实例部署方案。
+
+🎯 方案一：为不同项目隔离环境 (Conda + 独立目录)
+如果你希望为不同的工作流（例如，一个用于写实风格，一个用于动漫风格）维护完全独立的插件组合和Python依赖，避免版本冲突，这是最推荐的方式。
+
+创建独立的 Conda 环境：为每个实例创建一个干净的 Python 环境。
+
+bash
+# 创建并激活实例1的环境
+conda create -n comfyui_prod python=3.10 -y
+conda activate comfyui_prod
+# 在此环境中安装 PyTorch 等依赖...
+复制或克隆 ComfyUI 代码：为每个实例准备一份独立的代码目录，例如 ComfyUI_instance1 和 ComfyUI_instance2。
+
+配置模型共享（可选，节省空间）：为了避免重复下载巨大的模型文件，可以在各实例的 models 目录创建符号链接，指向一个中央模型仓库。
+
+Windows (需要管理员权限或开启开发者模式)：mklink /D D:\ComfyUI_instance1\models D:\中央模型库
+
+Linux/macOS：ln -s /path/to/中央模型库 /path/to/ComfyUI_instance1/models
+
+分别启动：激活相应的 Conda 环境，并分别运行各自目录下的 main.py。可以通过 --port 参数指定不同端口以防冲突。
+
+⚙️ 方案二：为多卡并行或高并发 (端口分发 + 环境变量)
+如果你有一台多显卡的服务器，想同时跑多个任务，或者想通过负载均衡提高并发处理能力，可以启动多个监听不同端口的实例。
+
+启动多个服务进程：为每个 GPU 启动一个 ComfyUI 实例，并通过 --cuda-device 参数指定使用的显卡，通过 --port 指定不同端口。
+
+bash
+# 在终端1启动，使用 GPU 0，监听 8188 端口
+python main.py --cuda-device 0 --port 8188
+
+# 在终端2启动，使用 GPU 1，监听 8189 端口
+python main.py --cuda-device 1 --port 8189
+配置数据隔离（可选）：如果希望每个实例有独立的插件和模型，可以通过 COMFYUI_PATH 等环境变量指定其数据存储路径。
+
+bash
+# Linux/macOS
+export COMFYUI_PATH="/data/comfyui_instances/instance1"
+python main.py --port 8188
+前置负载均衡（进阶）：为了实现统一的访问入口和高级负载均衡，可以在这些实例前架设 Nginx 等反向代理，将请求分发到后端的多个 ComfyUI 服务上。
+
+🔗 方案三：为分布式任务处理 (专用插件)
+如果你有大量图片需要生成，希望将一个任务拆解到多台机器或多个 GPU 上协同工作，可以使用专门的分布式插件。
+
+推荐插件：ComfyUI_NetDist。
+
+基本原理：
+
+在一个主实例上配置工作流。
+在其他机器或 GPU 上启动工作节点实例（启动时需加上 --listen 参数以允许远程连接）。
+在主实例的工作流中使用插件提供的特殊节点（如 RemoteQueueSimple），将部分计算任务分发到工作节点上执行并获取结果。
+💡 我应该选择哪种方案？
+如果你是为了开发测试或维护不同风格的项目，方案一（Conda隔离）最干净。
+
+如果你是为了提升服务吞吐量，让多个任务能同时运行，方案二（多端口分发）最简单直接。
+
+如果你是为了处理超大规模或单任务耗时极长的批量生成，方案三（分布式插件）的架构更具扩展性。
+
+结合你之前配置认证和HTTPS的需求，如果你是想搭建一个稳定的生产服务，我推荐你从方案二（多端口分发）入手。这样，你可以很自然地为每个实例（如 8188 和 8189 端口）分别配置HTTPS和认证，实现安全且隔离的多服务架构。
+
+这三种方案对应不同的使用场景，你对哪种更感兴趣，或者想为哪个目标（比如环境隔离还是并发处理）部署多实例？告诉我你的具体想法，我可以提供更详细的配置步骤
+
+
+方案二的部署指导
+步骤1、复制目录
+cd /mnt/data/project/
+rsync -av --exclude='/models/' ./ComfyUI/ ./ComfyUI-instance-1/
+步骤2、配置模型共享（可选，节省空间）：为了避免重复下载巨大的模型文件，可以在各实例的 models 目录创建符号链接，指向一个中央模型仓库
+ln -s /mnt/data/project/ComfyUI/models /mnt/data/project/ComfyUI-instance-1/models
+步骤3、激活环境 运行启动命令
+conda activate comfyui-312
+cd /mnt/data/project/ComfyUI && python main.py --listen 0.0.0.0 --port 18880 > /tmp/comfyui0_new.log 2>&1
+cd /mnt/data/project/ComfyUI-instance-1 && python main.py --listen 0.0.0.0 --port 18881 > /tmp/comfyui_new1.log 2>&1
+
+FRPC 开放外网访问
+cd /mnt/data/project/frpc
+vi data/frpc.toml #docker 内部 /etc/frp/frpc.toml
+docker compose restart
+
+测试
+test_api_with_token.py
+test_api_with_token1.py
+test_api_with_clear_mem.py
+test_api_with_clear_mem1.py
+
+执行test_api_with_token.py使用实例0生成图片
+do_api.png
+执行test_api_with_token1.py使用实例1生成图片
+do_api1.png
+执行gpu缓存清理
+未清理前
+clear_before.png
+执行清理test_api_with_clear_mem.py 对默认实例进行清理
+clear1.png
+清理test_api_with_clear_mem2.py 对实例1进行清理
+clear2.png
+
+运行日志：
+ D:\github\ComfyUI> & C:/Users/lengz/AppData/Local/Programs/Python/Python312/python.exe d:/github/ComfyUI/demo/text2img/test_api_with_token.py
+============================================================
+ComfyUI 多 GPU 文生图测试（带 Token 认证）
+============================================================
+============================================================
+检查 ComfyUI 服务...
+✗ 连接失败：HTTP 404
+
+请检查:
+  1. ComfyUI 服务器是否运行
+  2. Token 是否正确配置
+  3. 服务器地址：http://comfyui.iot38.top:40800
+PS D:\github\ComfyUI> & C:/Users/lengz/AppData/Local/Programs/Python/Python312/python.exe d:/github/ComfyUI/demo/text2img/test_api_with_token.py
+============================================================
+ComfyUI 多 GPU 文生图测试（带 Token 认证）
+============================================================
+============================================================
+检查 ComfyUI 服务...
+✓ 认证通过，服务正常运行
+  版本：0.16.4
+  PyTorch: 2.10.0+cu128
+
+  GPU 设备:
+    [0] cuda:0 NVIDIA GeForce RTX 5090 : cudaMallocAsync
+        VRAM: 30.4GB / 31.4GB
+
+加载工作流：d:\github\ComfyUI\demo\text2img\workflow_api.json
+✓ 工作流配置:
+  正面提示词：a beautiful landscape with mountains and lake
+  负面提示词：text, watermark, blurry, low quality
+
+  GPU 分配:
+    CLIPTextEncode (节点 6): cuda:0
+    CLIPTextEncode (节点 7): cuda:0
+    KSampler (节点 8):       cuda:1
+    VAEDecode (节点 9):      cuda:2
+
+  生成参数:
+    分辨率：512x512
+    步数：20
+    种子：123456
+
+提交工作流...
+✓ 已提交
+  Prompt ID: 9ee32748-b215-4125-80cd-de6ded2cbb49
+  Queue Number: 0
+
+等待执行完成...
+✓ 执行完成 (耗时：94.9s)
+
+获取生成结果...
+  状态：success
+
+  图片 1: ComfyUI_multi_gpu_00008_.png
+    ✓ 已保存：d:\github\ComfyUI\demo\text2img\outputs\ComfyUI_multi_gpu_00008_.png
+    大小：464.0 KB
+
+============================================================
+✓ 测试完成!
+  生成图片：1 张
+    - d:\github\ComfyUI\demo\text2img\outputs\ComfyUI_multi_gpu_00008_.png
+============================================================
+PS D:\github\ComfyUI> & C:/Users/lengz/AppData/Local/Programs/Python/Python312/python.exe d:/github/ComfyUI/demo/text2img/test_api_with_token1.py
+============================================================
+ComfyUI 多 GPU 文生图测试（带 Token 认证）
+============================================================
+============================================================
+检查 ComfyUI 服务...
+✓ 认证通过，服务正常运行
+  版本：0.16.4
+  PyTorch: 2.10.0+cu128
+
+  GPU 设备:
+    [0] cuda:0 NVIDIA GeForce RTX 5090 : cudaMallocAsync
+        VRAM: 29.9GB / 31.4GB
+
+加载工作流：d:\github\ComfyUI\demo\text2img\workflow_api.json
+✓ 工作流配置:
+  正面提示词：a beautiful landscape with mountains and lake
+  负面提示词：text, watermark, blurry, low quality
+
+  GPU 分配:
+    CLIPTextEncode (节点 6): cuda:0
+    CLIPTextEncode (节点 7): cuda:0
+    KSampler (节点 8):       cuda:1
+    VAEDecode (节点 9):      cuda:2
+
+  生成参数:
+    分辨率：512x512
+    步数：20
+    种子：123456
+
+提交工作流...
+✓ 已提交
+  Prompt ID: 543b9c2c-436f-4f65-b42e-835023cd115a
+  Queue Number: 1
+
+等待执行完成...
+✓ 执行完成 (耗时：0.0s)
+
+获取生成结果...
+  状态：success
+
+  图片 1: ComfyUI_multi_gpu_00008_.png
+    ✓ 已保存：d:\github\ComfyUI\demo\text2img\outputs\ComfyUI_multi_gpu_00008_.png
+    大小：464.0 KB
+
+============================================================
+✓ 测试完成!
+  生成图片：1 张
+    - d:\github\ComfyUI\demo\text2img\outputs\ComfyUI_multi_gpu_00008_.png
+============================================================
+PS D:\github\ComfyUI> & C:/Users/lengz/AppData/Local/Programs/Python/Python312/python.exe d:/github/ComfyUI/demo/text2img/test_api_with_token1.py
+============================================================
+ComfyUI 多 GPU 文生图测试（带 Token 认证）
+============================================================
+============================================================
+检查 ComfyUI 服务...
+✓ 认证通过，服务正常运行
+  版本：0.16.4
+  PyTorch: 2.10.0+cu128
+
+  GPU 设备:
+    [0] cuda:0 NVIDIA GeForce RTX 5090 : cudaMallocAsync
+        VRAM: 29.9GB / 31.4GB
+
+加载工作流：d:\github\ComfyUI\demo\text2img\workflow_api.json
+✓ 工作流配置:
+  正面提示词：a beautiful landscape with mountains and lake
+  负面提示词：text, watermark, blurry, low quality
+
+  GPU 分配:
+    CLIPTextEncode (节点 6): cuda:0
+    CLIPTextEncode (节点 7): cuda:0
+    KSampler (节点 8):       cuda:1
+    VAEDecode (节点 9):      cuda:2
+
+  生成参数:
+    分辨率：512x512
+    步数：20
+    种子：123456
+
+提交工作流...
+✓ 已提交
+  Prompt ID: bbd967f4-ce29-46ed-adc7-b51243d8bb61
+  Queue Number: 0
+
+等待执行完成...
+✓ 执行完成 (耗时：22.2s)
+
+获取生成结果...
+  状态：success
+
+  图片 1: ComfyUI_multi_gpu_00008_.png
+    ✓ 已保存：d:\github\ComfyUI\demo\text2img\outputs\ComfyUI_multi_gpu_00008_.png
+    大小：464.0 KB
+
+============================================================
+✓ 测试完成!
+  生成图片：1 张
+    - d:\github\ComfyUI\demo\text2img\outputs\ComfyUI_multi_gpu_00008_.png
+============================================================
+PS D:\github\ComfyUI> & C:/Users/lengz/AppData/Local/Programs/Python/Python312/python.exe d:/github/ComfyUI/demo/text2img/test_api_with_token.py
+============================================================
+ComfyUI 多 GPU 文生图测试（带 Token 认证）
+============================================================
+============================================================
+检查 ComfyUI 服务...
+✓ 认证通过，服务正常运行
+  版本：0.16.4
+  PyTorch: 2.10.0+cu128
+
+  GPU 设备:
+    [0] cuda:0 NVIDIA GeForce RTX 5090 : cudaMallocAsync
+        VRAM: 29.4GB / 31.4GB
+
+加载工作流：d:\github\ComfyUI\demo\text2img\workflow_api.json
+✓ 工作流配置:
+  正面提示词：A beautiful photo of a pedestrian street, with shops lining up and people bustling around
+  负面提示词：text, watermark, blurry, low quality
+
+  GPU 分配:
+    CLIPTextEncode (节点 6): cuda:0
+    CLIPTextEncode (节点 7): cuda:0
+    KSampler (节点 8):       cuda:1
+    VAEDecode (节点 9):      cuda:2
+
+  生成参数:
+    分辨率：512x512
+    步数：20
+    种子：123456
+
+提交工作流...
+✓ 已提交
+  Prompt ID: 2a709455-a29f-4f52-91f1-63b28e98a392
+  Queue Number: 2
+
+等待执行完成...
+Traceback (most recent call last):
+  File "d:\github\ComfyUI\demo\text2img\test_api_with_token.py", line 273, in <module>
+    exit(main())
+         ^^^^^^
+  File "d:\github\ComfyUI\demo\text2img\test_api_with_token.py", line 253, in main    
+    result = wait_for_completion(prompt_id)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\github\ComfyUI\demo\text2img\test_api_with_token.py", line 153, in wait_for_completion
+    time.sleep(1)
+KeyboardInterrupt
+PS D:\github\ComfyUI> & C:/Users/lengz/AppData/Local/Programs/Python/Python312/python.exe d:/github/ComfyUI/demo/text2img/test_api_with_token1.py
+============================================================
+ComfyUI 多 GPU 文生图测试（带 Token 认证）
+============================================================
+============================================================
+检查 ComfyUI 服务...
+✓ 认证通过，服务正常运行
+  版本：0.16.4
+  PyTorch: 2.10.0+cu128
+
+  GPU 设备:
+    [0] cuda:0 NVIDIA GeForce RTX 5090 : cudaMallocAsync
+        VRAM: 29.4GB / 31.4GB
+
+加载工作流：d:\github\ComfyUI\demo\text2img\workflow_api1.json
+✓ 工作流配置:
+  正面提示词：A beautiful seaside photo, with a blue sea and a clear sky
+  负面提示词：text, watermark, blurry, low quality
+
+  GPU 分配:
+    CLIPTextEncode (节点 6): cuda:0
+    CLIPTextEncode (节点 7): cuda:0
+    KSampler (节点 8):       cuda:1
+    VAEDecode (节点 9):      cuda:2
+
+  生成参数:
+    分辨率：512x512
+    步数：20
+    种子：123456
+
+提交工作流...
+✓ 已提交
+  Prompt ID: e09eb112-aac9-4963-9fa7-801fde7fd54b
+  Queue Number: 1
+
+等待执行完成...
+✓ 执行完成 (耗时：1.2s)
+✓ 执行完成 (耗时：1.2s)
+✓ 执行完成 (耗时：1.2s)
+
+获取生成结果...
+  状态：success
+
+  图片 1: ComfyUI_multi_gpu_00009_.png
+    ✓ 已保存：d:\github\ComfyUI\demo\text2img\outputs\ComfyUI_multi_gpu_00009_.png
+    大小：428.4 KB
+
+============================================================
+✓ 测试完成!
+  生成图片：1 张
+    - d:\github\ComfyUI\demo\text2img\outputs\ComfyUI_multi_gpu_00009_.png
+============================================================
+PS D:\github\ComfyUI> ^C
+PS D:\github\ComfyUI> & C:/Users/lengz/AppData/Local/Programs/Python/Python312/python.exe d:/github/ComfyUI/demo/text2img/test_api_with_clear_mem.py
+============================================================
+ComfyUI 多 GPU 文生图测试（带 Token 认证）
+============================================================
+============================================================
+检查 ComfyUI 服务...
+✓ 认证通过，服务正常运行
+  版本：0.16.4
+  PyTorch: 2.10.0+cu128
+
+  GPU 设备:
+    [0] cuda:0 NVIDIA GeForce RTX 5090 : cudaMallocAsync
+        VRAM: 29.4GB / 31.4GB
+
+加载工作流：d:\github\ComfyUI\demo\text2img\clear_mem.json
+✓ 工作流配置:
+
+提交工作流...
+✓ 已提交
+  Prompt ID: beb94fdb-30fa-48e9-bb8e-65a94312612c
+  Queue Number: 3
+
+等待执行完成...
+✓ 执行完成 (耗时：1.2s)
+
+获取生成结果...
+  状态：success
+✗ 未找到输出节点
+  可用输出：['2']
+PS D:\github\ComfyUI> & C:/Users/lengz/AppData/Local/Programs/Python/Python312/python.exe d:/github/ComfyUI/demo/text2img/test_api_with_clear_mem.py
+============================================================
+ComfyUI 多 GPU 文生图测试（带 Token 认证）
+============================================================
+============================================================
+检查 ComfyUI 服务...
+✓ 认证通过，服务正常运行
+  版本：0.16.4
+  PyTorch: 2.10.0+cu128
+
+  GPU 设备:
+    [0] cuda:0 NVIDIA GeForce RTX 5090 : cudaMallocAsync
+        VRAM: 29.7GB / 31.4GB
+
+加载工作流：d:\github\ComfyUI\demo\text2img\clear_mem.json
+✓ 工作流配置:
+
+提交工作流...
+✓ 已提交
+  Prompt ID: 5193c738-f9f4-4847-b662-985afb6dbd02
+  Queue Number: 2
+
+等待执行完成...
+✓ 执行完成 (耗时：1.5s)
+
+获取生成结果...
+  状态：success
+✗ 未找到输出节点
+  可用输出：['2']
+PS D:\github\ComfyUI> 
+

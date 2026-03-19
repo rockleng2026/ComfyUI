@@ -23,7 +23,7 @@ os.environ['HTTPS_PROXY'] = ''
 os.environ['NO_PROXY'] = '*'
 
 # ComfyUI 服务器地址
-SERVER = "comfyui.iot38.top:40800"
+SERVER = "comfyui1.iot38.top:40800"
 BASE_URL = f"http://{SERVER}"
 # 替换为你的 Token
 API_TOKEN = "$2b$12$U/9EZAVuXlTtDNTWzq2SnuKcryCzlvOOwEIoF1QiVpLMzr9DMkxtu"
@@ -34,7 +34,7 @@ HEADERS = {
     "Content-Type": "application/json"
 }
 
-WORKFLOW_FILE = "clear_mem.json"
+WORKFLOW_FILE = "workflow_api1.json"
 OUTPUT_DIR = "outputs"
 
 # 获取脚本所在目录
@@ -83,7 +83,18 @@ def load_workflow():
     with open(workflow_path, "r", encoding="utf-8") as f:
         workflow = json.load(f)
     
-    print("✓ 工作流配置:")    
+    print("✓ 工作流配置:")
+    print(f"  正面提示词：{workflow['6']['inputs']['text']}")
+    print(f"  负面提示词：{workflow['7']['inputs']['text']}")
+    print(f"\n  GPU 分配:")
+    print(f"    CLIPTextEncode (节点 6): {workflow['6']['inputs']['device']}")
+    print(f"    CLIPTextEncode (节点 7): {workflow['7']['inputs']['device']}")
+    print(f"    KSampler (节点 8):       {workflow['8']['inputs']['device']}")
+    print(f"    VAEDecode (节点 9):      {workflow['9']['inputs']['device']}")
+    print(f"\n  生成参数:")
+    print(f"    分辨率：{workflow['5']['inputs']['width']}x{workflow['5']['inputs']['height']}")
+    print(f"    步数：{workflow['8']['inputs']['steps']}")
+    print(f"    种子：{workflow['8']['inputs']['seed']}")
     
     return workflow
 
@@ -94,7 +105,7 @@ def submit_workflow(workflow):
     response = requests.post(
         f"{BASE_URL}/prompt",
         headers=HEADERS,
-        json={"prompt": workflow, "client_id": "clear_mem_demo"}
+        json={"prompt": workflow, "client_id": "text2img_token_demo"}
     )
     
     if response.status_code == 401:
