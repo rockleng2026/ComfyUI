@@ -16,6 +16,7 @@ import requests
 import json
 import time
 import os
+import random
 
 # 禁用代理
 os.environ['HTTP_PROXY'] = ''
@@ -83,6 +84,10 @@ def load_workflow():
     with open(workflow_path, "r", encoding="utf-8") as f:
         workflow = json.load(f)
     
+    # 使用随机种子，避免缓存命中
+    random_seed = random.randint(1, 2**31 - 1)
+    workflow['8']['inputs']['seed'] = random_seed
+    
     print("✓ 工作流配置:")
     print(f"  正面提示词：{workflow['6']['inputs']['text']}")
     print(f"  负面提示词：{workflow['7']['inputs']['text']}")
@@ -94,7 +99,7 @@ def load_workflow():
     print(f"\n  生成参数:")
     print(f"    分辨率：{workflow['5']['inputs']['width']}x{workflow['5']['inputs']['height']}")
     print(f"    步数：{workflow['8']['inputs']['steps']}")
-    print(f"    种子：{workflow['8']['inputs']['seed']}")
+    print(f"    种子：{random_seed} (随机)")
     
     return workflow
 
