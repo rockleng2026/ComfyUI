@@ -17,6 +17,7 @@
 ### 多实例部署方案
 
 本教程采用**方案二：多端口分发**，适用于以下场景：
+
 - 多卡并行运行多个任务
 - 提高服务并发处理能力
 - 为不同实例配置独立的 HTTPS 和认证
@@ -24,7 +25,7 @@
 ```
                     ┌─────────────────────────────────────┐
                     │         FRP Client (frpc)           │
-                    │  公网域名：comfyui[1-2].iot38.top   │
+                    │  公网域名：comfyui[1-2].leng.xz   │
                     └──────────────┬──────────────────────┘
                                    │
           ┌────────────────────────┼────────────────────────┐
@@ -85,7 +86,7 @@ cd /mnt/data/project/ComfyUI-instance-1 && \
 python main.py --listen 0.0.0.0 --port 18881 > /tmp/comfyui1.log 2>&1 &
 
 # 查看进程
-ps aux | grep comfyui
+ps aux | grep python
 ```
 
 ### 5. 验证服务状态
@@ -119,26 +120,26 @@ serverPort = 7000
 # 认证配置
 auth.token = "your-frp-token"
 
-# 实例 0 - comfyui.iot38.top
+# 实例 0 - test.leng.xz
 [[proxies]]
 name = "comfyui"
 type = "http"
 localPort = 18880
-customDomains = ["comfyui.iot38.top"]
+customDomains = ["test.leng.xz"]
 
-# 实例 1 - comfyui1.iot38.top
+# 实例 1 - test1.leng.xz
 [[proxies]]
 name = "comfyui1"
 type = "http"
 localPort = 18881
-customDomains = ["comfyui1.iot38.top"]
+customDomains = ["test1.leng.xz"]
 
-# 实例 2 - comfyui2.iot38.top
+# 实例 2 - test2.leng.xz
 [[proxies]]
 name = "comfyui2"
 type = "http"
 localPort = 18882
-customDomains = ["comfyui2.iot38.top"]
+customDomains = ["test2.leng.xz"]
 ```
 
 ### 3. 重启 FRP 服务
@@ -155,13 +156,13 @@ systemctl restart frpc
 
 ```bash
 # 测试实例 0
-curl http://comfyui.iot38.top/system_stats
+curl http://test.leng.xz/system_stats
 
 # 测试实例 1
-curl http://comfyui1.iot38.top/system_stats
+curl http://test1.leng.xz/system_stats
 
 # 测试实例 2
-curl http://comfyui2.iot38.top/system_stats
+curl http://test2.leng.xz/system_stats
 ```
 
 ---
@@ -183,19 +184,19 @@ pip install -r demo/requirements.txt
 # demo/text2img/test_api_with_token.py
 
 # 实例 0 配置
-SERVER = "comfyui.iot38.top:80"
+SERVER = "test.leng.xz:80"
 API_TOKEN = "your-token-here"
 
 # demo/text2img/test_api_with_token1.py
 
 # 实例 1 配置
-SERVER = "comfyui1.iot38.top:80"
+SERVER = "test1.leng.xz:80"
 API_TOKEN = "your-token-here"
 
 # demo/text2img/test_api_with_token2.py
 
 # 实例 2 配置
-SERVER = "comfyui2.iot38.top:80"
+SERVER = "test2.leng.xz:80"
 API_TOKEN = "your-token-here"
 ```
 
@@ -313,6 +314,7 @@ ComfyUI 多 GPU 文生图测试（带 Token 认证）
 ```
 
 **解决方案：**
+
 - 检查 ComfyUI 服务是否运行
 - 确认 Token 配置正确
 - 验证 FRP 隧道是否畅通
@@ -324,6 +326,7 @@ Address already in use
 ```
 
 **解决方案：**
+
 - 使用不同端口启动实例
 - 检查并关闭占用端口的进程
 
@@ -334,6 +337,7 @@ RuntimeError: CUDA out of memory
 ```
 
 **解决方案：**
+
 - 运行清理脚本释放显存
 - 减少并发实例数量
 - 降低生成分辨率和步数
@@ -343,5 +347,5 @@ RuntimeError: CUDA out of memory
 ## 相关文档
 
 - [ComfyUI API 文档](../ComfyUI_API_Documentation.md)
-- [单节点指定 GPU 功能开发](../ComfyUI_单节点指定 GPU 功能开发_需求与设计方案.md)
+- [单节点指定 GPU 功能开发](../ComfyUI*单节点指定 GPU 功能开发*需求与设计方案.md)
 - [MOVA GPU 显存管理](./MOVA_GPU_Design.md)

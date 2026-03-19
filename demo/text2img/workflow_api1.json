@@ -21,7 +21,7 @@
   },
   "6": {
     "inputs": {
-      "text": "A beautiful seaside photo, with a blue sea and a clear sky",
+      "text": "A beautiful seaside photo, with a blue sea and a clear sky and a girl",
       "device": "cuda:0",
       "clip": ["4", 1]
     },

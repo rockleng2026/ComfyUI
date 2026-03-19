@@ -28,10 +28,12 @@ os.environ['HTTP_PROXY'] = ''
 os.environ['HTTPS_PROXY'] = ''
 os.environ['NO_PROXY'] = '*'
 
-SERVER = "127.0.0.1:40800"
+# ComfyUI 服务器地址
+SERVER = "127.0.0.1:1800"
 BASE_URL = f"http://{SERVER}"
 # 替换为你的 Token
 API_TOKEN = ""
+
 
 # 认证请求头
 HEADERS = {
