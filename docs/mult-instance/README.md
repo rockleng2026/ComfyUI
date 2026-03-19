@@ -24,7 +24,7 @@
 ```
                     ┌─────────────────────────────────────┐
                     │         FRP Client (frpc)           │
-                    │   公网域名：comfyui.iot38.top       │
+                    │  公网域名：comfyui[1-2].iot38.top   │
                     └──────────────┬──────────────────────┘
                                    │
           ┌────────────────────────┼────────────────────────┐
@@ -110,7 +110,7 @@ vi data/frpc.toml
 # 或在 Docker 中：/etc/frp/frpc.toml
 ```
 
-### 2. 配置多个 TCP 代理
+### 2. 配置多个 HTTP 代理
 
 ```toml
 serverAddr = "your-frp-server-ip"
@@ -119,21 +119,26 @@ serverPort = 7000
 # 认证配置
 auth.token = "your-frp-token"
 
-# 实例 0 - 端口 40800
+# 实例 0 - comfyui.iot38.top
 [[proxies]]
-name = "comfyui-instance-0"
-type = "tcp"
-localIP = "127.0.0.1"
+name = "comfyui"
+type = "http"
 localPort = 18880
-remotePort = 40800
+customDomains = ["comfyui.iot38.top"]
 
-# 实例 1 - 端口 40801
+# 实例 1 - comfyui1.iot38.top
 [[proxies]]
-name = "comfyui-instance-1"
-type = "tcp"
-localIP = "127.0.0.1"
+name = "comfyui1"
+type = "http"
 localPort = 18881
-remotePort = 40801
+customDomains = ["comfyui1.iot38.top"]
+
+# 实例 2 - comfyui2.iot38.top
+[[proxies]]
+name = "comfyui2"
+type = "http"
+localPort = 18882
+customDomains = ["comfyui2.iot38.top"]
 ```
 
 ### 3. 重启 FRP 服务
@@ -150,10 +155,13 @@ systemctl restart frpc
 
 ```bash
 # 测试实例 0
-curl http://comfyui.iot38.top:40800/system_stats
+curl http://comfyui.iot38.top/system_stats
 
 # 测试实例 1
-curl http://comfyui.iot38.top:40801/system_stats
+curl http://comfyui1.iot38.top/system_stats
+
+# 测试实例 2
+curl http://comfyui2.iot38.top/system_stats
 ```
 
 ---
@@ -175,13 +183,19 @@ pip install -r demo/requirements.txt
 # demo/text2img/test_api_with_token.py
 
 # 实例 0 配置
-SERVER = "comfyui.iot38.top:40800"
+SERVER = "comfyui.iot38.top:80"
 API_TOKEN = "your-token-here"
 
 # demo/text2img/test_api_with_token1.py
 
 # 实例 1 配置
-SERVER = "comfyui.iot38.top:40801"
+SERVER = "comfyui1.iot38.top:80"
+API_TOKEN = "your-token-here"
+
+# demo/text2img/test_api_with_token2.py
+
+# 实例 2 配置
+SERVER = "comfyui2.iot38.top:80"
 API_TOKEN = "your-token-here"
 ```
 
